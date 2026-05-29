@@ -1,0 +1,831 @@
+{
+  "info": {
+    "_postman_id": "e84821e1-49b5-4f86-b2c4-1d926faf3cc0",
+    "name": "TaskFlow API (Learning Flows)",
+    "description": "Postman collection for TaskFlow FastAPI project with prefilled requests and end-to-end flows: users/auth, tasks, teams, system, docs, admin.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00. Bootstrap",
+      "description": "Start here. Obtain access token for protected requests.",
+      "item": [
+        {
+          "name": "Register user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"name\": \"{{user_name}}\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/users/register",
+            "description": "Creates a regular user and triggers BackgroundTasks (welcome email simulation)."
+          }
+        },
+        {
+          "name": "Issue token (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('access_token', json.access_token);",
+                  "}",
+                  "if (json.refresh_token) {",
+                  "  pm.collectionVariables.set('refresh_token', json.refresh_token);",
+                  "}",
+                  "if (json.csrf_token) {",
+                  "  pm.collectionVariables.set('csrf_token', json.csrf_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "TaskFlowPostman/1.0"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "{{device_id}}"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "admin@taskflow.dev",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "admin12345",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "tasks:read tasks:write teams:read admin",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}{{api_prefix}}/users/token",
+            "description": "OAuth2 Password flow token endpoint. Stores access_token and refresh_token variables."
+          }
+        },
+        {
+          "name": "Issue token (registered user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('user_access_token', json.access_token);",
+                  "}",
+                  "if (json.refresh_token) {",
+                  "  pm.collectionVariables.set('user_refresh_token', json.refresh_token);",
+                  "}",
+                  "if (json.csrf_token) {",
+                  "  pm.collectionVariables.set('user_csrf_token', json.csrf_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "TaskFlowPostman/1.0"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "{{device_id}}"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{user_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{user_password}}",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "tasks:read teams:read",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}{{api_prefix}}/users/token"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01. Users/Auth",
+      "item": [
+        {
+          "name": "Current user (/users/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/users/me"
+          }
+        },
+        {
+          "name": "Refresh access token (cookie + headers)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('access_token', json.access_token);",
+                  "}",
+                  "if (json.refresh_token) {",
+                  "  pm.collectionVariables.set('refresh_token', json.refresh_token);",
+                  "}",
+                  "if (json.csrf_token) {",
+                  "  pm.collectionVariables.set('csrf_token', json.csrf_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "User-Agent",
+                "value": "TaskFlowPostman/1.0"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "{{device_id}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrf_token}}"
+              },
+              {
+                "key": "Cookie",
+                "value": "refresh_token={{refresh_token}}; csrf_token={{csrf_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/auth/refresh",
+            "description": "Refreshes access token using refresh token from cookie and device headers."
+          }
+        },
+        {
+          "name": "OAuth login URL (Google)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.state) {",
+                  "  pm.collectionVariables.set('oauth_state', json.state);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}{{api_prefix}}/auth/oauth/google/login?redirect_uri={{oauth_redirect_uri}}"
+          }
+        },
+        {
+          "name": "OAuth callback validation (Google)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}{{api_prefix}}/auth/oauth/google/callback?code=dummy-auth-code&state={{oauth_state}}"
+          }
+        },
+        {
+          "name": "Hidden internal users list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/users/internal/all",
+            "description": "Route is hidden from OpenAPI schema (`include_in_schema=False`), but callable directly."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Tasks Flow",
+      "description": "Typical task lifecycle with scopes and payload variants.",
+      "item": [
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks?limit=20&offset=0&tags=backend"
+          }
+        },
+        {
+          "name": "Create task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "  pm.collectionVariables.set('task_id', String(json.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Prepare quarterly roadmap\",\n  \"description\": \"Collect inputs from all leads\",\n  \"priority\": 4,\n  \"tags\": [\"planning\", \"backend\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks?team_id=1"
+          }
+        },
+        {
+          "name": "Get task by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks/{{task_id}}"
+          }
+        },
+        {
+          "name": "Update task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Prepare quarterly roadmap (updated)\",\n  \"priority\": 5,\n  \"tags\": [\"planning\", \"urgent\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks/{{task_id}}?notify=true"
+          }
+        },
+        {
+          "name": "Import tasks (wrapped payload)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.tasks && json.tasks.length > 0) {",
+                  "  pm.collectionVariables.set('imported_task_id', String(json.tasks[0].id));",
+                  "  pm.collectionVariables.set('task_id', String(json.tasks[0].id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"jira\",\n  \"payload\": [\n    {\n      \"external_id\": \"JIRA-2451\",\n      \"title\": \"Imported via generic endpoint\",\n      \"description\": \"Task imported from external backlog\",\n      \"priority\": 4,\n      \"tags\": [\"import\", \"jira\"]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks/import?team_id=1"
+          }
+        },
+        {
+          "name": "Import tasks from provider endpoint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": [\n    {\n      \"external_id\": \"TR-777\",\n      \"title\": \"Imported via provider endpoint\",\n      \"priority\": 3,\n      \"tags\": [\"import\", \"trello\"]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/integrations/trello/tasks?team_id=1"
+          }
+        },
+        {
+          "name": "Validation error sample (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"priority\": 10,\n  \"tags\": [\"bad\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks?team_id=1",
+            "description": "Useful to observe unified validation error contract."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Teams Flow (Bearer + API Key)",
+      "description": "APIRouter-level dependency requires X-API-Key.",
+      "item": [
+        {
+          "name": "List teams (missing API key, expect 401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/teams"
+          }
+        },
+        {
+          "name": "List teams (authorized)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/teams"
+          }
+        },
+        {
+          "name": "Create team",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "  pm.collectionVariables.set('team_id', String(json.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Growth\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/teams"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. System Endpoints",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}{{api_prefix}}/system/health"
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}{{api_prefix}}/system/ready"
+          }
+        },
+        {
+          "name": "Export tasks CSV (with filters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks/export.csv?team_id=1&status=blocked&assignee=bob@taskflow.dev"
+          }
+        },
+        {
+          "name": "Task events SSE stream",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks/{{task_id}}/events/stream?limit=5",
+            "description": "Live notifications for one task. In Postman, inspect streamed chunks in response body."
+          }
+        },
+        {
+          "name": "Download task attachment (after upload)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks/{{task_id}}/attachments/{{attachment_id}}"
+          }
+        },
+        {
+          "name": "Upload task attachment (multipart/form-data)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "  pm.collectionVariables.set('attachment_id', String(json.id));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "attachment",
+                  "type": "file",
+                  "src": "{{upload_file_path}}",
+                  "description": "Pick a local file in Postman if variable path is empty."
+                }
+              ]
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks/{{task_id}}/attachments"
+          }
+        },
+        {
+          "name": "Preview task description (markdown/html)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"markdown\",\n  \"content\": \"# Release\\n- Validate migration\\n- Notify stakeholders\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/tasks/description/preview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Docs UIs",
+      "item": [
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/openapi.json"
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/docs"
+          }
+        },
+        {
+          "name": "ReDoc",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/redoc"
+          }
+        },
+        {
+          "name": "Scalar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/scalar"
+          }
+        },
+        {
+          "name": "Stoplight",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/stoplight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Admin Sub-application",
+      "item": [
+        {
+          "name": "Admin stats",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/admin/stats"
+          }
+        },
+        {
+          "name": "Admin Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/admin/docs"
+          }
+        },
+        {
+          "name": "Admin OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/admin/openapi.json"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "api_prefix",
+      "value": "/api/v1"
+    },
+    {
+      "key": "user_email",
+      "value": "postman.user@example.com"
+    },
+    {
+      "key": "user_name",
+      "value": "Postman User"
+    },
+    {
+      "key": "user_password",
+      "value": "postmanpass123"
+    },
+    {
+      "key": "api_key",
+      "value": "local-dev-key"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "user_access_token",
+      "value": ""
+    },
+    {
+      "key": "refresh_token",
+      "value": ""
+    },
+    {
+      "key": "user_refresh_token",
+      "value": ""
+    },
+    {
+      "key": "csrf_token",
+      "value": ""
+    },
+    {
+      "key": "user_csrf_token",
+      "value": ""
+    },
+    {
+      "key": "device_id",
+      "value": "postman-device-1"
+    },
+    {
+      "key": "oauth_redirect_uri",
+      "value": "http://127.0.0.1:8000/oauth/callback"
+    },
+    {
+      "key": "oauth_state",
+      "value": ""
+    },
+    {
+      "key": "task_id",
+      "value": "1"
+    },
+    {
+      "key": "imported_task_id",
+      "value": ""
+    },
+    {
+      "key": "team_id",
+      "value": "1"
+    },
+    {
+      "key": "upload_file_path",
+      "value": ""
+    },
+    {
+      "key": "attachment_id",
+      "value": ""
+    }
+  ]
+}
