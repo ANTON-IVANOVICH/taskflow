@@ -1,7 +1,8 @@
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -36,8 +37,13 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 900
     refresh_token_ttl_seconds: int = 1209600
 
-    allowed_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    # NoDecode: keep raw env strings so parse_csv_list (below) can split CSV values.
+    # Without it pydantic-settings JSON-decodes list fields from env and rejects "a,b".
+    allowed_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    allowed_hosts: Annotated[list[str], NoDecode] = ["localhost", "127.0.0.1", "testserver"]
     gzip_minimum_size: int = 1000
     docs_enabled: bool = True
     request_timeout_seconds: float = 10.0
@@ -66,11 +72,45 @@ class Settings(BaseSettings):
     oauth_github_user_emails_url: str = "https://api.github.com/user/emails"
     oauth_state_ttl_seconds: int = 600
 
+    # Layer 4 — async, background tasks, real-time
+    worker_queue_name: str = "taskflow:jobs"
+    worker_eager: bool | None = None
+    worker_job_ttl_seconds: int = 3600
+    worker_max_jobs: int = 20
+    worker_job_timeout_seconds: int = 300
+    outbox_relay_batch_size: int = 100
+    scheduler_enabled: bool = True
+    outbox_relay_interval_seconds: int = 30
+    ws_heartbeat_seconds: int = 30
+    ws_send_timeout_seconds: float = 5.0
+    realtime_channel_prefix: str = "taskflow:rt"
+
     @field_validator("allowed_origins", "allowed_hosts", mode="before")
     @classmethod
     def parse_csv_list(cls, value: object) -> object:
         if isinstance(value, str):
             return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator(
+        "worker_eager",
+        "postgres_dsn",
+        "redis_url",
+        "mongo_url",
+        "meilisearch_url",
+        "meilisearch_api_key",
+        "oauth_google_client_id",
+        "oauth_google_client_secret",
+        "oauth_github_client_id",
+        "oauth_github_client_secret",
+        mode="before",
+    )
+    @classmethod
+    def empty_str_to_none(cls, value: object) -> object:
+        # An empty value in .env (e.g. `REDIS_URL=`, `OAUTH_GOOGLE_CLIENT_ID=`) means "unset".
+        # Without this it stays "" — truthy enough to look configured and break `is None` checks.
+        if isinstance(value, str) and value.strip() == "":
+            return None
         return value
 
 

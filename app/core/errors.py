@@ -42,6 +42,15 @@ class UserAlreadyExists(DomainError):
         )
 
 
+class JobNotFound(DomainError):
+    def __init__(self, job_id: str) -> None:
+        super().__init__(
+            code="job_not_found",
+            message=f"Job {job_id} not found",
+            status_code=404,
+        )
+
+
 class UnauthorizedError(DomainError):
     def __init__(self, message: str = "Unauthorized") -> None:
         super().__init__(code="unauthorized", message=message, status_code=401)

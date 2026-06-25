@@ -10,4 +10,4 @@ venv/
 .coverage
 htmlcov/
 *.db
-.DS_Store
+.DS_StoreSTORY.md

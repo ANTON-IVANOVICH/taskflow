@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -28,6 +29,10 @@ from app.core.middleware import (
 from app.db.bootstrap import ensure_schema_initialized
 from app.db.clients import DataClients, close_data_clients, init_data_clients
 from app.db.session import engine
+from app.websockets.broker import EventBroker
+from app.websockets.realtime import connection_manager
+from app.workers.runtime import build_task_queue
+from app.workers.scheduler import PeriodicScheduler
 
 try:
     from slowapi import Limiter
@@ -46,15 +51,45 @@ error_logger = logging.getLogger("taskflow.errors")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.http_client = httpx.AsyncClient(timeout=settings.request_timeout_seconds)
     await ensure_schema_initialized()
     app.state.data_clients = await init_data_clients(app.state.http_client)
     app.state.search_gateway = app.state.data_clients.search_gateway
+
+    # Layer 4: real-time broker, task queue, periodic scheduler.
+    redis_client = app.state.data_clients.redis_client
+    broker = None
+    if redis_client is not None:
+        broker = EventBroker(
+            redis=redis_client,
+            manager=connection_manager,
+            channel_prefix=settings.realtime_channel_prefix,
+        )
+        await broker.start()
+    app.state.event_broker = broker
+    app.state.task_queue = await build_task_queue(redis=redis_client, broker=broker)
+
+    scheduler = PeriodicScheduler()
+    if settings.scheduler_enabled and redis_client is not None:
+        queue = app.state.task_queue
+        scheduler.add_interval_job(
+            lambda: queue.enqueue("relay_outbox"),
+            interval_seconds=settings.outbox_relay_interval_seconds,
+            job_id="relay_outbox",
+        )
+        await scheduler.start()
+    app.state.scheduler = scheduler
     app.state.started = True
 
     yield
 
+    await scheduler.stop()
+    if broker is not None:
+        await broker.stop()
+    task_queue = getattr(app.state, "task_queue", None)
+    if task_queue is not None:
+        await task_queue.close()
     data_clients = getattr(app.state, "data_clients", DataClients())
     await close_data_clients(data_clients)
     await app.state.http_client.aclose()
@@ -180,6 +215,8 @@ def create_app() -> FastAPI:
             {"name": "tasks", "description": "Task operations"},
             {"name": "integrations", "description": "External systems import/sync"},
             {"name": "teams", "description": "Team operations"},
+            {"name": "jobs", "description": "Background jobs and transactional outbox"},
+            {"name": "realtime", "description": "WebSocket real-time channels"},
             {"name": "system", "description": "Infrastructure endpoints"},
             {"name": "admin", "description": "Admin sub-application"},
         ],

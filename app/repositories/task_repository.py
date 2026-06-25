@@ -154,6 +154,19 @@ class TaskRepository(BaseRepository[Task]):
         await self.session.flush()
         return event
 
+    async def count_by_status(self, *, team_id: int | None) -> dict[str, int]:
+        stmt = select(Task.status, func.count()).group_by(Task.status)
+        if team_id is not None:
+            stmt = stmt.where(Task.team_id == team_id)
+        rows = (await self.session.execute(stmt)).all()
+        return {str(status): int(count) for status, count in rows}
+
+    async def recent_titles(self, *, team_id: int | None, limit: int) -> list[str]:
+        stmt = select(Task.title).order_by(Task.created_at.desc(), Task.id.desc()).limit(limit)
+        if team_id is not None:
+            stmt = stmt.where(Task.team_id == team_id)
+        return list((await self.session.scalars(stmt)).all())
+
     async def get_task_ids_by_text_search(
         self,
         query: str,

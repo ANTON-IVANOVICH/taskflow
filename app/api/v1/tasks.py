@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, Upload
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from app.core.deps import Paginator, TasksReader, TasksWriter, UoWDep
+from app.schemas.jobs import DashboardRead
 from app.schemas.tasks import (
     TaskAttachmentRead,
     TaskCreate,
@@ -17,6 +18,7 @@ from app.schemas.tasks import (
     TaskUpdate,
 )
 from app.services import tasks as task_service
+from app.websockets.realtime import broadcast_task_event, task_room
 
 router = APIRouter(
     prefix="/tasks",
@@ -217,6 +219,15 @@ async def preview_task_description(
     return HTMLResponse(content=html)
 
 
+@router.get("/dashboard", response_model=DashboardRead, summary="Team dashboard aggregate")
+async def task_dashboard(
+    current_user: TasksReader,
+    team_id: Annotated[int | None, Query(ge=1, description="Filter dashboard by team id")] = None,
+) -> DashboardRead:
+    del current_user
+    return await task_service.build_dashboard(team_id=team_id)
+
+
 @router.get("/{task_id}", response_model=TaskRead, summary="Get task by id")
 async def get_task(
     task_id: Annotated[int, Path(ge=1, description="Task identifier")],
@@ -236,13 +247,26 @@ async def update_task(
     request: Request,
     notify: Annotated[bool, Query(description="Notify task participants")] = False,
 ) -> TaskRead:
-    del current_user, notify
-    return await task_service.update_task(
+    del current_user
+    updated = await task_service.update_task(
         uow=uow,
         task_id=task_id,
         payload=payload,
         clients=getattr(request.app.state, "data_clients", None),
     )
+    await broadcast_task_event(
+        request.app,
+        task_room(task_id),
+        {
+            "type": "task_event",
+            "event": "task_updated",
+            "task_id": task_id,
+            "status": updated.status,
+            "priority": updated.priority,
+            "notify": notify,
+        },
+    )
+    return updated
 
 
 @router.post(

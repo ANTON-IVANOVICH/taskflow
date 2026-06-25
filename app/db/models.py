@@ -98,3 +98,30 @@ class TaskEvent(Base):
     )
 
     task: Mapped[Task] = relationship(back_populates="events", lazy="raise")
+
+
+class OutboxEvent(Base):
+    """Transactional outbox: written in the same transaction as the business change.
+
+    A relay worker later publishes unpublished rows to the real-time broker and marks
+    them delivered, giving at-least-once delivery without losing events on broker outage.
+    """
+
+    __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index("ix_outbox_events_unpublished", "published_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

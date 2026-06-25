@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.outbox_repository import OutboxRepository
 from app.repositories.task_repository import TaskRepository
 from app.repositories.team_repository import TeamRepository
 
@@ -11,6 +12,7 @@ class SqlAlchemyUnitOfWork:
         self.session = session
         self.tasks = TaskRepository(session)
         self.teams = TeamRepository(session)
+        self.outbox = OutboxRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

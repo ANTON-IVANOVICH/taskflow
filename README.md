@@ -73,6 +73,21 @@ TaskFlow — backend-платформа для управления задача
 - MongoDB: `MONGO_URL`, `MONGO_DB_NAME`, `MONGO_EVENTS_COLLECTION`.
 - Meilisearch: `MEILISEARCH_URL`, `MEILISEARCH_API_KEY`, `MEILISEARCH_INDEX`.
 
+## Async-конфиг (Layer 4)
+
+- Фоновые задачи: ARQ-воркер при наличии `REDIS_URL`, иначе in-process eager-выполнение (как `task_always_eager`).
+- `WORKER_EAGER` (пусто = авто), `WORKER_QUEUE_NAME`, `WORKER_MAX_JOBS`, `WORKER_JOB_TIMEOUT_SECONDS`, `WORKER_JOB_TTL_SECONDS`.
+- Периодические задачи: `SCHEDULER_ENABLED`, `OUTBOX_RELAY_INTERVAL_SECONDS` (APScheduler при наличии, иначе asyncio-fallback). Запускается только при наличии Redis; в одном инстансе.
+- Транзакционный outbox: события пишутся в той же транзакции, что и бизнес-изменение (`OUTBOX_RELAY_BATCH_SIZE`), затем доставляются relay-задачей (at-least-once).
+- Real-time: WebSocket-комнаты по задаче; кросс-инстанс рассылка через Redis Pub/Sub (`REALTIME_CHANNEL_PREFIX`), `WS_HEARTBEAT_SECONDS`, `WS_SEND_TIMEOUT_SECONDS`. Без Redis рассылка идёт локально в процессе.
+- Параллелизм: независимые запросные операции выполняются через `asyncio.gather` (каждая со своей сессией); CPU-bound вынесен в worker-thread через `asyncio.to_thread`.
+
+ARQ-воркер (нужен `REDIS_URL`):
+
+```bash
+arq app.workers.settings.WorkerSettings
+```
+
 ## Запуск
 
 ```bash
@@ -114,3 +129,10 @@ alembic upgrade head
 - `GET /api/v1/tasks/{task_id}/attachments/{attachment_id}` (task attachment download)
 - `GET /api/v1/tasks/export.csv?team_id=1&status=blocked&assignee=bob@taskflow.dev` (task report export)
 - `GET /api/v1/tasks/{task_id}/events/stream?limit=20` (task events SSE)
+- `GET /api/v1/tasks/dashboard?team_id=1` (parallel aggregate via `asyncio.gather`)
+- `POST /api/v1/jobs/reports` (enqueue background report job; ARQ or eager)
+- `GET /api/v1/jobs/{job_id}` (job status + result)
+- `GET /api/v1/jobs/{job_id}/events` (job progress SSE)
+- `POST /api/v1/jobs/outbox/relay` (relay transactional outbox; admin)
+- `GET /api/v1/system/worker-metrics` (active WS connections, jobs processed, outbox backlog)
+- `WS /api/v1/ws/tasks/{task_id}?token=<access>` (live task room: connected/ping-pong/broadcast/task_event)

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Iterable
 from html import escape
 
 from app.core.errors import TaskAttachmentNotFound, TaskNotFound, TeamNotFound
+from app.db.bootstrap import ensure_schema_initialized
 from app.db.clients import DataClients, publish_task_event
 from app.db.models import Task, TaskAttachment, TaskEvent
 from app.db.search import MeiliSearchGateway
+from app.db.session import async_session_maker
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.schemas.jobs import DashboardRead
 from app.schemas.tasks import (
     TaskAttachmentRead,
     TaskCreate,
@@ -135,6 +139,11 @@ async def create_task(
             event_type="task_imported",
             payload=imported_payload,
         )
+    # Transactional outbox: written in the same transaction as the task itself.
+    await uow.outbox.add_event(
+        topic="task.created",
+        payload={"task_id": task.id, "team_id": task.team_id, "title": task.title},
+    )
     await uow.commit()
 
     await _emit_events(clients=clients, events=[created_event, imported_event])
@@ -158,6 +167,10 @@ async def update_task(
         task_id=task_id,
         event_type="task_updated",
         payload={"changed_fields": sorted(update_payload.keys())},
+    )
+    await uow.outbox.add_event(
+        topic="task.updated",
+        payload={"task_id": task_id, "changed_fields": sorted(update_payload.keys())},
     )
     await uow.commit()
 
@@ -293,6 +306,44 @@ def preview_task_description(payload: TaskDescriptionPreviewIn) -> str:
     if payload.format == "html":
         return _sanitize_html(payload.content)
     return _render_markdown_to_html(payload.content)
+
+
+async def build_dashboard(*, team_id: int | None = None) -> DashboardRead:
+    """Aggregate dashboard data by running independent queries concurrently.
+
+    Each coroutine uses its own session because an ``AsyncSession`` cannot be shared across
+    concurrent operations — this is the safe way to parallelize independent IO in a request.
+    """
+
+    await ensure_schema_initialized()
+    status_counts, recent, pulse = await asyncio.gather(
+        _dashboard_status_counts(team_id),
+        _dashboard_recent_titles(team_id),
+        _dashboard_activity_pulse(),
+    )
+    return DashboardRead(
+        team_id=team_id,
+        status_counts=status_counts,
+        recent=recent,
+        pulse=pulse,
+    )
+
+
+async def _dashboard_status_counts(team_id: int | None) -> dict[str, int]:
+    async with async_session_maker() as session:
+        uow = SqlAlchemyUnitOfWork(session)
+        return await uow.tasks.count_by_status(team_id=team_id)
+
+
+async def _dashboard_recent_titles(team_id: int | None) -> list[str]:
+    async with async_session_maker() as session:
+        uow = SqlAlchemyUnitOfWork(session)
+        return await uow.tasks.recent_titles(team_id=team_id, limit=5)
+
+
+async def _dashboard_activity_pulse() -> dict[str, object]:
+    # Stands in for an independent external call (analytics/weather) fanned out via gather.
+    return {"window": "24h", "source": "internal"}
 
 
 async def _resolve_search_ids(

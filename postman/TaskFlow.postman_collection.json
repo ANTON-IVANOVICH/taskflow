@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "e84821e1-49b5-4f86-b2c4-1d926faf3cc0",
     "name": "TaskFlow API (Learning Flows)",
-    "description": "Postman collection for TaskFlow FastAPI project with prefilled requests and end-to-end flows: users/auth, tasks, teams, system, docs, admin.",
+    "description": "Postman collection for TaskFlow FastAPI project with prefilled requests and end-to-end flows: users/auth, tasks, teams, system, docs, admin, jobs/async, realtime.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -744,6 +744,133 @@
           }
         }
       ]
+    },
+    {
+      "name": "07. Async & Real-time (Layer 4)",
+      "description": "Background jobs (ARQ/eager), job progress SSE, transactional outbox relay, parallel dashboard, worker metrics, and the live task WebSocket room.",
+      "item": [
+        {
+          "name": "Enqueue report job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 202', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.job_id) {",
+                  "  pm.collectionVariables.set('job_id', json.job_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"team_id\": 1,\n  \"report_format\": \"summary\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/jobs/reports",
+            "description": "Enqueues generate_report and stores job_id. Without REDIS_URL it runs eagerly (status=complete); with Redis it is queued for the ARQ worker."
+          }
+        },
+        {
+          "name": "Get job status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/jobs/{{job_id}}",
+            "description": "Returns status, progress trail and result for a previously enqueued job."
+          }
+        },
+        {
+          "name": "Job progress SSE",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/jobs/{{job_id}}/events",
+            "description": "Streams recorded progress steps then a terminal status event."
+          }
+        },
+        {
+          "name": "Relay transactional outbox (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/jobs/outbox/relay",
+            "description": "Publishes pending outbox events and marks them delivered (idempotent). Requires the admin scope (the bootstrap admin token has it)."
+          }
+        },
+        {
+          "name": "Task dashboard (parallel aggregate)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/tasks/dashboard?team_id=1",
+            "description": "Status counts + recent titles + activity pulse aggregated via asyncio.gather, each on its own session."
+          }
+        },
+        {
+          "name": "Worker & realtime metrics",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}{{api_prefix}}/system/worker-metrics",
+            "description": "Active WS connections/rooms, jobs processed/failed, and outbox backlog."
+          }
+        },
+        {
+          "name": "WebSocket task room (open as WS request)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{ws_url}}{{api_prefix}}/ws/tasks/{{task_id}}?token={{access_token}}",
+            "description": "Live task room. In Postman use New > WebSocket Request with this URL. Server sends {type:connected}; send {\"type\":\"ping\"} -> {type:pong} or {\"type\":\"broadcast\",\"text\":\"hi\"}; updating the task over REST pushes a task_event. Token must carry tasks:read."
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -826,6 +953,14 @@
     {
       "key": "attachment_id",
       "value": ""
+    },
+    {
+      "key": "job_id",
+      "value": ""
+    },
+    {
+      "key": "ws_url",
+      "value": "ws://127.0.0.1:8000"
     }
   ]
 }
