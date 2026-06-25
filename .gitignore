@@ -10,4 +10,5 @@ venv/
 .coverage
 htmlcov/
 *.db
-.DS_StoreSTORY.md
+.DS_Store
+STORY.md
