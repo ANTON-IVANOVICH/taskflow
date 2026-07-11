@@ -217,6 +217,12 @@ Stripe-события `checkout.session.completed`, `payment_intent.succeeded`, 
 
 Postman-переменные автоматически сохраняют access token, file upload URL/key, webhook signature и payment id. Реальные Stripe/email/S3 сценарии требуют соответствующих переменных окружения; LLM без ключа работает через offline fallback.
 
+## Документация проекта
+
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — история изменений;
+- [`docs/SCENARIOS.md`](docs/SCENARIOS.md) — пошаговые пользовательские и интеграционные flows;
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — компоненты, data flow и точки расширения.
+
 ## Проверки
 
 ```bash
