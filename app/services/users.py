@@ -66,7 +66,7 @@ def register_user(payload: UserRegister) -> UserRead:
         email=payload.email,
         name=payload.name,
         is_admin=False,
-        scopes=["tasks:read", "teams:read"],
+        scopes=["tasks:read", "tasks:write", "teams:read"],
     )
     _USERS[user.id] = user
     _PASSWORDS[user.email] = payload.password
@@ -245,4 +245,7 @@ async def send_welcome_email(email: str, name: str) -> None:
         html=f"<p>Hi {name}, welcome to TaskFlow.</p>",
         idempotency_key=f"welcome:{email}",
     )
-    logger.info("welcome_email_processed", extra={"email": email, "status": result.status})
+    logger.info(
+        "welcome_email_processed",
+        extra={"email": email, "recipient_name": name, "status": result.status},
+    )

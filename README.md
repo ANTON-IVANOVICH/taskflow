@@ -35,6 +35,26 @@ uvicorn app.main:app --reload
 python -m pip install -e '.[dev,s3]'
 ```
 
+Для Docker-backed PostgreSQL/Redis integration tests:
+
+```bash
+python -m pip install -e '.[dev,containers]'
+RUN_CONTAINERS=1 python -m pytest -m slow
+```
+
+Container tests отключены по умолчанию и не требуются для обычного локального прогона.
+
+CI разделяет быстрый application job и отдельный Docker-backed container job: `.github/workflows/tests.yml`.
+
+Для mutation testing:
+
+```bash
+docker build -f docker/mutation.Dockerfile -t taskflow-mutation .
+docker run --rm taskflow-mutation
+```
+
+Mutation testing выполняется в отдельном Linux-контейнере и CI job; mutmut создаёт временный каталог только внутри контейнера.
+
 При заданном `REDIS_URL` приложение подключает Redis и пытается использовать ARQ. Без доступного Redis фоновые задачи выполняются eager-вариантом внутри процесса.
 
 ARQ-воркер запускается отдельно:
@@ -227,6 +247,8 @@ Postman-переменные автоматически сохраняют acces
 
 ```bash
 python -m pytest -q
+python -m pytest -q --cov=app --cov-report=term-missing
+python -m pytest -q -m e2e
 ruff check app tests alembic
 git diff --check
 ```
@@ -235,4 +257,8 @@ git diff --check
 
 - `tests/test_app.py` — базовые API/auth/task flows;
 - `tests/test_background_jobs.py` — jobs, outbox, WebSocket и concurrency;
-- `tests/test_integrations.py` — HTTP resilience, email, files, webhooks, LLM и Stripe.
+- `tests/test_integrations.py` — HTTP resilience, email, files, webhooks, LLM и Stripe;
+- `tests/unit/` — быстрые unit-тесты чистых adapters и signed token helpers;
+- `tests/integration/` — негативные API-paths, async HTTP boundary checks и optional Docker-backed checks;
+- `tests/e2e/` — полный пользовательский сценарий register → create → update → read;
+- `tests/factories/` — Factory Boy/Faker-фабрики валидных API payloads.

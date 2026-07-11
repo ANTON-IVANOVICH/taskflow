@@ -29,11 +29,11 @@ def issue_token(scope: str) -> str:
 
 
 def issue_registered_token() -> str:
-    email = f"layer5-{uuid4().hex}@taskflow.dev"
-    password = "layer5-password"
+    email = f"integration-{uuid4().hex}@taskflow.dev"
+    password = "integration-password"
     registered = client.post(
         "/api/v1/users/register",
-        json={"email": email, "name": "Layer 5 User", "password": password},
+        json={"email": email, "name": "Integration User", "password": password},
     )
     assert registered.status_code == 201
     response = client.post(
@@ -232,14 +232,14 @@ def test_stripe_webhook_is_signed_deduplicated_and_processed() -> None:
 
 def test_payment_checkout_is_idempotent_and_webhook_updates_status() -> None:
     calls = 0
-    session_id = f"cs_layer5_{uuid4().hex}"
+    session_id = f"cs_integration_{uuid4().hex}"
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
         return httpx.Response(
             200,
-            json={"id": session_id, "url": "https://checkout.test/layer5"},
+            json={"id": session_id, "url": "https://checkout.test/integration"},
             request=request,
         )
 
@@ -257,7 +257,7 @@ def test_payment_checkout_is_idempotent_and_webhook_updates_status() -> None:
         payload = {
             "amount": 2500,
             "currency": "usd",
-            "description": "Layer 5 test payment",
+            "description": "Integration test payment",
             "success_url": "https://taskflow.test/success",
             "cancel_url": "https://taskflow.test/cancel",
             "idempotency_key": idempotency_key,

@@ -257,7 +257,7 @@ async def test_gather_mapping_keys_align_with_results() -> None:
 # --- OpenAPI ---------------------------------------------------------------------------------
 
 
-def test_openapi_exposes_layer4_paths() -> None:
+def test_openapi_exposes_async_runtime_paths() -> None:
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/jobs/reports" in paths
     assert "/api/v1/jobs/{job_id}" in paths

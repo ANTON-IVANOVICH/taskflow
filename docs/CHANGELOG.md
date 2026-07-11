@@ -76,7 +76,17 @@
 - `tests/test_app.py` — базовые API/auth/task flows.
 - `tests/test_background_jobs.py` — jobs, outbox, WebSocket и concurrency.
 - `tests/test_integrations.py` — resilience, email, files, webhooks, LLM и Stripe.
-- Полный pytest-набор: `49 passed`.
+- `tests/unit/` — circuit breaker, signed tokens и SSE parser.
+- `tests/integration/` — negative API paths, Alembic-backed PostgreSQL/Redis checks и async HTTP boundary.
+- `tests/e2e/` — полный register → create → update → read сценарий.
+- `tests/factories/` — Factory Boy/Faker-фабрики валидных API payloads.
+- Полный pytest-набор без Docker: `67 passed, 4 skipped`; container checks запускаются отдельно.
+- Coverage report включён в pytest-конфигурацию: текущий baseline — `72.70%` branch coverage, минимальный floor — `70%`.
+- Для containers добавлен отдельный optional extra и `RUN_CONTAINERS=1` guard.
+- Для mutation testing добавлен отдельный optional extra `mutation` и конфигурация `setup.cfg`.
+- Mutation testing вынесен в отдельный Linux Docker image и CI job; временные артефакты mutmut не попадают в рабочее дерево.
+- Добавлен CI workflow с отдельными application и container jobs.
+- Добавлены property-based и frozen-time проверки для signed upload tokens.
 - Ruff и `git diff --check` проходят без ошибок.
 - Alembic поднимает схему с нуля до текущего head.
 

@@ -1,0 +1,15 @@
+.git
+.github
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+mutants
+.mutmut-cache
+*.db
+*.pyc
+__pycache__
+.venv
+venv
+var

@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -132,10 +134,11 @@ def test_teams_with_api_key() -> None:
 
 
 def test_create_team_requires_admin_role() -> None:
+    email = f"analyst-{uuid4().hex}@taskflow.dev"
     register_response = client.post(
         "/api/v1/users/register",
         json={
-            "email": "analyst.rbac@taskflow.dev",
+            "email": email,
             "name": "Analyst RBAC",
             "password": "analyst12345",
         },
@@ -143,7 +146,7 @@ def test_create_team_requires_admin_role() -> None:
     assert register_response.status_code == 201
 
     token = issue_token_for_user(
-        email="analyst.rbac@taskflow.dev",
+        email=email,
         password="analyst12345",
         scope="teams:read",
     )
