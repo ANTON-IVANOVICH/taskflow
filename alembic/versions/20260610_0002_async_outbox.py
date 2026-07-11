@@ -1,4 +1,4 @@
-"""layer4 async outbox
+"""async outbox
 
 Revision ID: 20260610_0002
 Revises: 20260526_0001

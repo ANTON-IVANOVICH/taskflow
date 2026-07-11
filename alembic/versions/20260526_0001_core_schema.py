@@ -1,4 +1,4 @@
-"""layer3 core schema
+"""core schema
 
 Revision ID: 20260526_0001
 Revises:

@@ -17,7 +17,9 @@ from typing import Any
 from app.core.config import get_settings
 from app.workers.jobs import (
     JOB_HANDLERS,
+    deliver_webhook,
     generate_report,
+    process_webhook_event,
     purge_published_outbox,
     relay_outbox,
     send_welcome_email,
@@ -72,6 +74,8 @@ try:
             _arq_handler("relay_outbox"),
             _arq_handler("purge_published_outbox"),
             _arq_handler("send_welcome_email"),
+            _arq_handler("process_webhook_event"),
+            _arq_handler("deliver_webhook"),
         ]
         on_startup = _startup
         on_shutdown = _shutdown
@@ -93,4 +97,6 @@ __all__ = [
     "purge_published_outbox",
     "relay_outbox",
     "send_welcome_email",
+    "process_webhook_event",
+    "deliver_webhook",
 ]

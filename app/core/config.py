@@ -85,6 +85,61 @@ class Settings(BaseSettings):
     ws_send_timeout_seconds: float = 5.0
     realtime_channel_prefix: str = "taskflow:rt"
 
+    # Layer 5 — external integrations (resilient HTTP)
+    http_connect_timeout: float = 5.0
+    http_read_timeout: float = 30.0
+    http_write_timeout: float = 10.0
+    http_pool_timeout: float = 5.0
+    http_max_connections: int = 100
+    http_max_keepalive: int = 20
+    http_retry_attempts: int = 3
+    http_retry_base_delay: float = 0.2
+    http_retry_max_delay: float = 10.0
+    http_retry_max_after: float = 30.0
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_reset_seconds: float = 30.0
+
+    # Layer 5 — file storage
+    storage_backend: str = "local"
+    storage_local_dir: str = "./var/storage"
+    storage_url_secret: str = "dev-insecure-storage-secret-change-me"
+    storage_presign_ttl_seconds: int = 300
+    storage_max_upload_bytes: int = 50 * 1024 * 1024
+    storage_allowed_types: str = (
+        "text/plain,text/csv,application/pdf,application/json,image/png,image/jpeg"
+    )
+    s3_bucket: str | None = None
+    s3_region: str = "us-east-1"
+    s3_endpoint_url: str | None = None
+
+    # Layer 5 — webhooks
+    webhook_signing_secrets: str = "stripe=whsec_dev;github=ghsec_dev;generic=dev-webhook-secret"
+    webhook_signature_header: str = "X-Webhook-Signature"
+    webhook_id_header: str = "X-Webhook-Id"
+    webhook_delivery_timeout: float = 10.0
+    webhook_tolerance_seconds: int = 300
+
+    # Layer 5 — email
+    email_provider: str = "generic"
+    email_provider_base_url: str | None = None
+    email_api_key: str | None = None
+    email_from: str = "TaskFlow <no-reply@taskflow.dev>"
+    email_timeout_seconds: float = 15.0
+
+    # Layer 5 — Stripe payments
+    stripe_api_key: str | None = None
+    stripe_base_url: str = "https://api.stripe.com"
+    stripe_timeout_seconds: float = 30.0
+
+    # Layer 5 — LLM
+    anthropic_api_key: str | None = None
+    anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_model: str = "claude-opus-4-8"
+    anthropic_version: str = "2023-06-01"
+    llm_max_tokens: int = 1024
+    llm_max_concurrency: int = 10
+    llm_timeout_seconds: float = 60.0
+
     @field_validator("allowed_origins", "allowed_hosts", mode="before")
     @classmethod
     def parse_csv_list(cls, value: object) -> object:
@@ -103,6 +158,12 @@ class Settings(BaseSettings):
         "oauth_google_client_secret",
         "oauth_github_client_id",
         "oauth_github_client_secret",
+        "s3_bucket",
+        "s3_endpoint_url",
+        "email_provider_base_url",
+        "email_api_key",
+        "stripe_api_key",
+        "anthropic_api_key",
         mode="before",
     )
     @classmethod

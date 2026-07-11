@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "e84821e1-49b5-4f86-b2c4-1d926faf3cc0",
     "name": "TaskFlow API (Learning Flows)",
-    "description": "Postman collection for TaskFlow FastAPI project with prefilled requests and end-to-end flows: users/auth, tasks, teams, system, docs, admin, jobs/async, realtime.",
+    "description": "Postman collection for TaskFlow FastAPI project with prefilled requests and end-to-end flows: users/auth, tasks, teams, files, signed webhooks, LLM SSE, Stripe Checkout, system, docs, admin, jobs/async, realtime.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -30,7 +30,7 @@
               }
             },
             "url": "{{base_url}}{{api_prefix}}/users/register",
-            "description": "Creates a regular user and triggers BackgroundTasks (welcome email simulation)."
+            "description": "Creates a regular user and enqueues the welcome email job. Without an email provider it returns an explicit local skipped result."
           }
         },
         {
@@ -85,7 +85,7 @@
                 },
                 {
                   "key": "scope",
-                  "value": "tasks:read tasks:write teams:read admin",
+                  "value": "tasks:read tasks:write teams:read integrations:write admin",
                   "type": "text"
                 }
               ]
@@ -282,7 +282,7 @@
                 "value": "Bearer {{access_token}}"
               }
             ],
-            "url": "{{base_url}}{{api_prefix}}/tasks?limit=20&offset=0&tags=backend"
+            "url": "{{base_url}}{{api_prefix}}/tasks/?limit=20&offset=0&tags=backend"
           }
         },
         {
@@ -325,7 +325,7 @@
                 }
               }
             },
-            "url": "{{base_url}}{{api_prefix}}/tasks?team_id=1"
+            "url": "{{base_url}}{{api_prefix}}/tasks/?team_id=1"
           }
         },
         {
@@ -460,7 +460,7 @@
                 }
               }
             },
-            "url": "{{base_url}}{{api_prefix}}/tasks?team_id=1",
+            "url": "{{base_url}}{{api_prefix}}/tasks/?team_id=1",
             "description": "Useful to observe unified validation error contract."
           }
         }
@@ -480,7 +480,7 @@
                 "value": "Bearer {{access_token}}"
               }
             ],
-            "url": "{{base_url}}{{api_prefix}}/teams"
+            "url": "{{base_url}}{{api_prefix}}/teams/"
           }
         },
         {
@@ -497,7 +497,7 @@
                 "value": "{{api_key}}"
               }
             ],
-            "url": "{{base_url}}{{api_prefix}}/teams"
+            "url": "{{base_url}}{{api_prefix}}/teams/"
           }
         },
         {
@@ -544,7 +544,7 @@
                 }
               }
             },
-            "url": "{{base_url}}{{api_prefix}}/teams"
+            "url": "{{base_url}}{{api_prefix}}/teams/"
           }
         }
       ]
@@ -871,6 +871,280 @@
           }
         }
       ]
+    },
+    {
+      "name": "08. External Integrations",
+      "description": "Layer 5 flows: HMAC-protected file uploads, inbound/outbound webhooks, streaming LLM chat, and idempotent Stripe Checkout. External provider requests require the corresponding settings in .env.",
+      "item": [
+        {
+          "name": "Request presigned file upload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('file_key', json.key);",
+                  "pm.collectionVariables.set('file_content_type', (json.headers && json.headers['Content-Type']) || 'text/plain');",
+                  "const uploadUrl = json.upload_url.startsWith('http') ? json.upload_url : pm.collectionVariables.get('base_url') + json.upload_url;",
+                  "pm.collectionVariables.set('file_upload_url', uploadUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"postman-report.txt\",\n  \"content_type\": \"text/plain\",\n  \"size\": 28\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/files/presigned-upload",
+            "description": "Requests a local HMAC upload token or a real S3/MinIO presigned PUT URL. Requires tasks:write."
+          }
+        },
+        {
+          "name": "Upload file bytes",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "{{file_content_type}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "TaskFlow upload from Postman"
+            },
+            "url": "{{file_upload_url}}",
+            "description": "Uses the URL returned by the previous request. Local storage returns TaskFlow JSON; S3 returns the provider response."
+          }
+        },
+        {
+          "name": "Confirm file upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"{{file_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/files/confirm"
+          }
+        },
+        {
+          "name": "Download file",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/files/download?key={{file_key}}"
+          }
+        },
+        {
+          "name": "Receive signed generic webhook",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = JSON.stringify({ id: pm.collectionVariables.get('webhook_id'), type: 'postman.test', data: { source: 'postman' } });",
+                  "pm.collectionVariables.set('webhook_body', body);",
+                  "const signature = CryptoJS.HmacSHA256(body, pm.collectionVariables.get('webhook_secret')).toString(CryptoJS.enc.Hex);",
+                  "pm.collectionVariables.set('webhook_signature', 'sha256=' + signature);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Webhook accepted or deduplicated', function () { pm.expect(['accepted', 'already_processed']).to.include(pm.response.json().status); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Webhook-Signature",
+                "value": "{{webhook_signature}}"
+              },
+              {
+                "key": "X-Webhook-Id",
+                "value": "{{webhook_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{webhook_body}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/webhooks/generic",
+            "description": "Verifies the raw-body HMAC, stores the event idempotently, and enqueues asynchronous processing."
+          }
+        },
+        {
+          "name": "Send signed outbound webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"{{webhook_destination}}\",\n  \"event_type\": \"postman.test\",\n  \"provider\": \"generic\",\n  \"payload\": {\n    \"message\": \"hello from TaskFlow\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/webhooks/deliver/test",
+            "description": "Queues an admin-only signed outbound delivery. Set webhook_destination to a reachable test receiver before sending."
+          }
+        },
+        {
+          "name": "Stream LLM chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Summarize TaskFlow in one sentence\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/llm/chat/stream",
+            "description": "Streams Anthropic SSE deltas when ANTHROPIC_API_KEY is set; otherwise returns the deterministic offline fallback."
+          }
+        },
+        {
+          "name": "Create Stripe Checkout session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('payment_id', json.id);",
+                  "pm.collectionVariables.set('stripe_session_id', json.external_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1999,\n  \"currency\": \"usd\",\n  \"description\": \"TaskFlow Pro\",\n  \"success_url\": \"http://127.0.0.1:3000/billing/success\",\n  \"cancel_url\": \"http://127.0.0.1:3000/billing/cancel\",\n  \"idempotency_key\": \"{{stripe_idempotency_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{api_prefix}}/payments/checkout",
+            "description": "Creates a local pending payment and a Stripe Checkout Session. Requires STRIPE_API_KEY and integrations:write."
+          }
+        },
+        {
+          "name": "Get payment status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{base_url}}{{api_prefix}}/payments/{{payment_id}}",
+            "description": "Reads the local payment status; Stripe webhook processing changes it to paid, failed, expired, or refunded."
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -961,6 +1235,50 @@
     {
       "key": "ws_url",
       "value": "ws://127.0.0.1:8000"
+    },
+    {
+      "key": "file_key",
+      "value": ""
+    },
+    {
+      "key": "file_upload_url",
+      "value": ""
+    },
+    {
+      "key": "file_content_type",
+      "value": "text/plain"
+    },
+    {
+      "key": "webhook_id",
+      "value": "postman-webhook-1"
+    },
+    {
+      "key": "webhook_secret",
+      "value": "dev-webhook-secret"
+    },
+    {
+      "key": "webhook_body",
+      "value": ""
+    },
+    {
+      "key": "webhook_signature",
+      "value": ""
+    },
+    {
+      "key": "webhook_destination",
+      "value": "http://127.0.0.1:9000/webhook"
+    },
+    {
+      "key": "stripe_idempotency_key",
+      "value": "postman-payment-1"
+    },
+    {
+      "key": "stripe_session_id",
+      "value": ""
+    },
+    {
+      "key": "payment_id",
+      "value": ""
     }
   ]
 }

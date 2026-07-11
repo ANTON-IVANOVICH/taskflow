@@ -16,10 +16,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete
 
 from app.core.concurrency import run_cpu_bound
+from app.core.config import get_settings
 from app.db.bootstrap import ensure_schema_initialized
 from app.db.models import OutboxEvent
 from app.db.session import async_session_maker
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.integrations.runtime import default_email_service, default_resilient_client
+from app.integrations.webhooks import build_delivery_headers, get_webhook_secret
 from app.workers.queue import JobContext, JobHandler
 
 logger = logging.getLogger("taskflow.workers")
@@ -121,10 +124,125 @@ async def purge_published_outbox(
 
 
 async def send_welcome_email(ctx: JobContext, *, email: str, name: str) -> dict[str, object]:
-    """Stub email task — stands in for a real provider call (Mailgun/SES) with retry semantics."""
+    """Send a welcome email, or explicitly report a local offline skip."""
 
-    logger.info("welcome_email_sent", extra={"email": email, "name": name})
-    return {"status": "sent", "to": email}
+    result = await default_email_service.send(
+        to=email,
+        subject="Welcome to TaskFlow",
+        text=f"Hi {name}, welcome to TaskFlow.",
+        html=f"<p>Hi {name}, welcome to TaskFlow.</p>",
+        idempotency_key=f"welcome:{email}",
+    )
+    logger.info(
+        "welcome_email_processed",
+        extra={"email": email, "name": name, "status": result.status},
+    )
+    return {
+        "status": result.status,
+        "provider": result.provider,
+        "message_id": result.message_id,
+        "to": email,
+    }
+
+
+async def process_webhook_event(ctx: JobContext, *, event_id: int) -> dict[str, object]:
+    """Process a stored webhook and apply known payment state transitions."""
+
+    await ensure_schema_initialized()
+    async with async_session_maker() as session:
+        uow = SqlAlchemyUnitOfWork(session)
+        event = await uow.webhooks.get(event_id)
+        if event is None:
+            return {"event_id": event_id, "processed": False, "reason": "not_found"}
+        if event.processed_at is not None:
+            return {"event_id": event_id, "processed": True, "duplicate": True}
+
+        payment_status = _payment_status_from_webhook(event.source, event.event_type)
+        payment_external_id = _payment_external_id(event.payload)
+        if payment_status is not None and payment_external_id is not None:
+            await uow.payments.mark_status_by_external_id(
+                provider=event.source,
+                external_id=payment_external_id,
+                status=payment_status,
+            )
+        await uow.webhooks.mark_processed(event_id)
+        await uow.commit()
+    await ctx.report(1, 1, f"processed webhook {event_id}")
+    return {
+        "event_id": event_id,
+        "processed": True,
+        "payment_status": payment_status,
+    }
+
+
+def _payment_status_from_webhook(source: str, event_type: str) -> str | None:
+    if source != "stripe":
+        return None
+    return {
+        "checkout.session.completed": "paid",
+        "payment_intent.succeeded": "paid",
+        "checkout.session.expired": "expired",
+        "payment_intent.payment_failed": "failed",
+        "charge.refunded": "refunded",
+    }.get(event_type)
+
+
+def _payment_external_id(payload: dict[str, object]) -> str | None:
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    obj = data.get("object")
+    if not isinstance(obj, dict):
+        return None
+    external_id = obj.get("id")
+    return external_id if isinstance(external_id, str) else None
+
+
+async def deliver_webhook(
+    ctx: JobContext,
+    *,
+    destination: str,
+    event_type: str,
+    payload: dict[str, object],
+    provider: str = "generic",
+) -> dict[str, object]:
+    """Sign and POST an outbound webhook via the resilient client, then record the delivery."""
+
+    secret = get_webhook_secret(provider)
+    settings = get_settings()
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
+    headers = build_delivery_headers(secret, body, event_type)
+
+    status_code: int | None = None
+    success = False
+    try:
+        response = await default_resilient_client.request(
+            "POST",
+            destination,
+            content=body,
+            headers=headers,
+            breaker_name=f"webhook:{destination}",
+            timeout=settings.webhook_delivery_timeout,
+        )
+        status_code = response.status_code
+        success = 200 <= response.status_code < 300
+    except Exception:  # noqa: BLE001 - delivery failure must be recorded, not raised
+        logger.warning("webhook_delivery_failed", extra={"destination": destination})
+
+    await ensure_schema_initialized()
+    async with async_session_maker() as session:
+        uow = SqlAlchemyUnitOfWork(session)
+        await uow.webhooks.record_delivery(
+            destination=destination,
+            event_type=event_type,
+            payload=payload,
+            status_code=status_code,
+            success=success,
+            attempts=1,
+        )
+        await uow.commit()
+    await ctx.report(1, 1, f"delivered to {destination}: {status_code}")
+    return {"success": success, "status_code": status_code}
 
 
 JOB_HANDLERS: dict[str, JobHandler] = {
@@ -132,4 +250,6 @@ JOB_HANDLERS: dict[str, JobHandler] = {
     "relay_outbox": relay_outbox,
     "purge_published_outbox": purge_published_outbox,
     "send_welcome_email": send_welcome_email,
+    "process_webhook_event": process_webhook_event,
+    "deliver_webhook": deliver_webhook,
 }

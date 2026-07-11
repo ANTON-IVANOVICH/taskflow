@@ -5,7 +5,6 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +28,14 @@ from app.core.middleware import (
 from app.db.bootstrap import ensure_schema_initialized
 from app.db.clients import DataClients, close_data_clients, init_data_clients
 from app.db.session import engine
+from app.integrations.http import create_http_client
+from app.integrations.runtime import (
+    build_email_service,
+    build_llm_service,
+    build_resilient_client,
+    build_stripe_service,
+)
+from app.storage.factory import build_storage
 from app.websockets.broker import EventBroker
 from app.websockets.realtime import connection_manager
 from app.workers.runtime import build_task_queue
@@ -52,10 +59,17 @@ error_logger = logging.getLogger("taskflow.errors")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    app.state.http_client = httpx.AsyncClient(timeout=settings.request_timeout_seconds)
+    app.state.http_client = create_http_client()
     await ensure_schema_initialized()
     app.state.data_clients = await init_data_clients(app.state.http_client)
     app.state.search_gateway = app.state.data_clients.search_gateway
+
+    # Layer 5: resilient HTTP client, file storage, LLM service (share the long-lived http client).
+    app.state.resilient_client = build_resilient_client(app.state.http_client)
+    app.state.storage = build_storage()
+    app.state.llm_service = build_llm_service(app.state.http_client)
+    app.state.email_service = build_email_service(app.state.resilient_client)
+    app.state.stripe_service = build_stripe_service(app.state.resilient_client)
 
     # Layer 4: real-time broker, task queue, periodic scheduler.
     redis_client = app.state.data_clients.redis_client
@@ -217,6 +231,10 @@ def create_app() -> FastAPI:
             {"name": "teams", "description": "Team operations"},
             {"name": "jobs", "description": "Background jobs and transactional outbox"},
             {"name": "realtime", "description": "WebSocket real-time channels"},
+            {"name": "files", "description": "File storage: presigned upload/download"},
+            {"name": "webhooks", "description": "Inbound/outbound signed webhooks"},
+            {"name": "llm", "description": "Streaming LLM chat"},
+            {"name": "payments", "description": "Idempotent Stripe Checkout Sessions"},
             {"name": "system", "description": "Infrastructure endpoints"},
             {"name": "admin", "description": "Admin sub-application"},
         ],

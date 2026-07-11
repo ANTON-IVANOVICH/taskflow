@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.config import get_settings
 from app.core.deps import CurrentUser, DBSession
 from app.schemas.users import TokenOut, UserRead, UserRegister
 from app.services import users as user_service
+from app.workers.runtime import get_task_queue
 
 router = APIRouter(prefix="/users", tags=["users"])
 settings = get_settings()
@@ -20,12 +21,16 @@ settings = get_settings()
 )
 async def register(
     payload: Annotated[UserRegister, Body()],
-    background_tasks: BackgroundTasks,
+    request: Request,
     db: DBSession,
 ) -> UserRead:
     del db
     user = user_service.register_user(payload)
-    background_tasks.add_task(user_service.send_welcome_email, user.email, user.name)
+    await get_task_queue(request.app).enqueue(
+        "send_welcome_email",
+        email=str(user.email),
+        name=user.name,
+    )
     return user
 
 

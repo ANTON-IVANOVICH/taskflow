@@ -100,6 +100,75 @@ class TaskEvent(Base):
     task: Mapped[Task] = relationship(back_populates="events", lazy="raise")
 
 
+class WebhookEvent(Base):
+    """Raw inbound webhook, stored before async processing for idempotency + durability."""
+
+    __tablename__ = "webhook_events"
+    __table_args__ = (
+        Index("ix_webhook_events_source_external", "source", "external_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookDelivery(Base):
+    """Record of an outbound webhook we sent to a subscriber."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (Index("ix_webhook_deliveries_created_at", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    destination: Mapped[str] = mapped_column(String(500), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    success: Mapped[bool] = mapped_column(default=False, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class Payment(TimestampMixin, Base):
+    """A local payment record linked to an external Stripe Checkout Session."""
+
+    __tablename__ = "payments"
+    __table_args__ = (
+        Index("ix_payments_provider_external", "provider", "external_id", unique=True),
+        Index("ix_payments_provider_idempotency", "provider", "idempotency_key", unique=True),
+        Index("ix_payments_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(30), default="stripe", nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    customer_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    checkout_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    payment_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata",
+        JSON,
+        default=dict,
+        nullable=False,
+    )
+
+
 class OutboxEvent(Base):
     """Transactional outbox: written in the same transaction as the business change.
 

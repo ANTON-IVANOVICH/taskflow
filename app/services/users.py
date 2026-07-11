@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+import logging
 import secrets
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -17,6 +17,7 @@ from app.core.security import (
 from app.core.security import (
     decode_access_token as decode_access_jwt,
 )
+from app.integrations.runtime import default_email_service
 from app.schemas.users import TokenOut, UserRead, UserRegister
 
 _USERS: dict[int, UserRead] = {
@@ -45,6 +46,7 @@ class RefreshSession:
 
 
 _REFRESH_SESSIONS: dict[str, RefreshSession] = {}
+logger = logging.getLogger("taskflow.users")
 
 
 def _next_user_id() -> int:
@@ -236,5 +238,11 @@ def _issue_token_pair(
 
 
 async def send_welcome_email(email: str, name: str) -> None:
-    await asyncio.sleep(0.01)
-    print(f"[background] welcome email queued to {email} for {name}")
+    result = await default_email_service.send(
+        to=email,
+        subject="Welcome to TaskFlow",
+        text=f"Hi {name}, welcome to TaskFlow.",
+        html=f"<p>Hi {name}, welcome to TaskFlow.</p>",
+        idempotency_key=f"welcome:{email}",
+    )
+    logger.info("welcome_email_processed", extra={"email": email, "status": result.status})
